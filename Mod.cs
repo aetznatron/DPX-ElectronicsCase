@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
@@ -14,42 +15,47 @@ using SPTarkov.Server.Core.Models.Eft.Common.Tables;
 using SPTarkov.Server.Core.Models.Spt.Mod;
 using SPTarkov.Server.Core.Models.Utils;
 using SPTarkov.Server.Core.Services;
-using SPTarkov.Server.Core.Services.Mod;
+using SPTarkov.Server.Core.Services.Locales;
+using SPTarkov.Server.Core.Services.Modding.Custom;
+using SPTarkov.Server.Core.Models.Spt.Tables;
+using SPTarkov.Common.Models.Logging;
 
 namespace DPX.ElectronicsCase;
 
-public record ModMetadata : AbstractModMetadata
+public sealed record ModMetadata : IModMetadata
 {
-    public override string ModGuid { get; init; } = "DPX-ElectronicsCase";
-    public override string Name { get; init; } = "DPX Electronics Case";
-    public override string Author { get; init; } = "TKV";
-    public override List<string>? Contributors { get; init; }
-    public override SemanticVersioning.Version Version { get; init; } = new("1.1.0");
-    public override SemanticVersioning.Range SptVersion { get; init; } = new("~4.0.0");
-    public override List<string>? Incompatibilities { get; init; }
-    public override Dictionary<string, SemanticVersioning.Range>? ModDependencies { get; init; }
-    public override string? Url { get; init; }
-    public override bool? IsBundleMod { get; init; } = true;
-    public override string License { get; init; } = "MIT";
+    public string ModGuid { get; init; } = "DPX-ElectronicsCase";
+    public string Name { get; init; } = "DPX Electronics Case";
+    public string Author { get; init; } = "TKV";
+    public List<string>? Contributors { get; init; }
+    public SemanticVersioning.Version Version { get; init; } = new("1.2.0");
+    public SemanticVersioning.Range SptVersion { get; init; } = new("~4.1.0");
+    public List<string>? Incompatibilities { get; init; }
+    public Dictionary<string, SemanticVersioning.Range>? ModDependencies { get; init; }
+    public string? Url { get; init; }
+    public string License { get; init; } = "MIT";
+    public bool HasPrepatcher { get; init; } = false;
 }
 
-[Injectable(TypePriority = OnLoadOrder.PostDBModLoader + 1)]
+[Injectable(TypePriority = OnLoadOrder.Preload + 1)]
 public sealed class Mod : IOnLoad
 {
     private readonly ISptLogger<Mod> logger;
-    private readonly DatabaseService databaseService;
+    private readonly TemplateTable templateTable;
+    private readonly TradersTable tradersTable;
     private readonly CustomItemService customItemService;
 
-    public Mod(ISptLogger<Mod> logger, DatabaseService databaseService, CustomItemService customItemService)
+    public Mod(ISptLogger<Mod> logger, TemplateTable templateTable, TradersTable tradersTable, CustomItemService customItemService)
     {
         this.logger = logger;
-        this.databaseService = databaseService;
+        this.templateTable = templateTable;
+        this.tradersTable = tradersTable;
         this.customItemService = customItemService;
     }
 
-    public Task OnLoad()
+    public Task OnLoadAsync(CancellationToken cancellationToken)
     {
-        DpxElectronicsCaseInstaller.Apply(this.logger, this.databaseService, this.customItemService);
+        DpxElectronicsCaseInstaller.Apply(this.logger, this.templateTable, this.tradersTable, this.customItemService);
         return Task.CompletedTask;
     }
 }
@@ -94,14 +100,14 @@ internal static class DpxElectronicsCaseInstaller
         ["Jaeger"] = "5c0647fdd443bc2504c2d371"
     };
 
-    public static void Apply(ISptLogger<Mod> logger, DatabaseService databaseService, CustomItemService customItemService)
+    public static void Apply(ISptLogger<Mod> logger, TemplateTable templateTable, TradersTable tradersTable, CustomItemService customItemService)
     {
         var config = LoadConfig();
-        ValidateBaseData(databaseService, config);
-        CreateItem(databaseService, customItemService, config);
-        ConfigureContainerGrid(databaseService, config);
-        AddTraderOffer(databaseService, config);
-        VerifyStartup(logger, databaseService, config);
+        ValidateBaseData(templateTable, tradersTable, config);
+        CreateItem(templateTable, customItemService, config);
+        ConfigureContainerGrid(templateTable, config);
+        AddTraderOffer(tradersTable, config);
+        VerifyStartup(logger, templateTable, tradersTable, config);
     }
 
     private static ModConfig LoadConfig()
@@ -134,9 +140,9 @@ internal static class DpxElectronicsCaseInstaller
         return System.IO.Path.Combine(modFolder, "config", "config.json");
     }
 
-    private static void ValidateBaseData(DatabaseService databaseService, ModConfig config)
+    private static void ValidateBaseData(TemplateTable templateTable, TradersTable tradersTable, ModConfig config)
     {
-        var items = databaseService.GetItems();
+        var items = templateTable.Items;
         var missing = new[] { ItemCaseTpl, RoublesTpl }
             .Where(id => !items.ContainsKey(new MongoId(id)))
             .ToList();
@@ -146,18 +152,18 @@ internal static class DpxElectronicsCaseInstaller
             throw new InvalidOperationException($"[{ModName}] missing template id(s): {string.Join(", ", missing)}");
         }
 
-        if (databaseService.GetTrader(new MongoId(config.TraderId))?.Assort == null)
+        if (tradersTable.GetTrader(new MongoId(config.TraderId))?.Assort == null)
         {
             throw new InvalidOperationException($"[{ModName}] trader/assort not found: {config.TraderId}");
         }
     }
 
-    private static void CreateItem(DatabaseService databaseService, CustomItemService customItemService, ModConfig config)
+    private static void CreateItem(TemplateTable templateTable, CustomItemService customItemService, ModConfig config)
     {
-        var items = databaseService.GetItems();
+        var items = templateTable.Items;
         items.Remove(new MongoId(DpxCaseTpl));
 
-        var baseHandbookEntry = databaseService.GetHandbook().Items.FirstOrDefault(item => item.Id.Equals(ItemCaseTpl))
+        var baseHandbookEntry = templateTable.Handbook.Items.FirstOrDefault(item => item.Id.Equals(ItemCaseTpl))
             ?? throw new InvalidOperationException($"[{ModName}] base handbook entry not found: {ItemCaseTpl}");
 
         var props = new TemplateItemProperties();
@@ -175,6 +181,7 @@ internal static class DpxElectronicsCaseInstaller
             OverrideProperties = props,
             ParentId = CommonContainerParent,
             NewId = DpxCaseTpl,
+            NewItemName = "DPX Electronics Case",
             FleaPriceRoubles = config.Price,
             HandbookPriceRoubles = config.Price,
             HandbookParentId = baseHandbookEntry.ParentId,
@@ -187,19 +194,19 @@ internal static class DpxElectronicsCaseInstaller
                     Description = "A rugged storage case designed specifically for electronic components, military electronics, storage devices, processors, circuit boards and advanced technology parts."
                 }
             }
-        });
+        }, typeof(Mod).Assembly);
 
         if (result.Success != true)
         {
             throw new InvalidOperationException($"[{ModName}] item creation failed: {string.Join("; ", result.Errors ?? [])}");
         }
 
-        ConfigurePrefab(databaseService);
+        ConfigurePrefab(templateTable);
     }
 
-    private static void ConfigurePrefab(DatabaseService databaseService)
+    private static void ConfigurePrefab(TemplateTable templateTable)
     {
-        var item = databaseService.GetItems()[new MongoId(DpxCaseTpl)];
+        var item = templateTable.Items[new MongoId(DpxCaseTpl)];
         var props = GetMemberValue(item, "Properties", "Props", "_props")
             ?? throw new InvalidOperationException($"[{ModName}] created item props not found");
 
@@ -209,9 +216,9 @@ internal static class DpxElectronicsCaseInstaller
         SetValue(prefab, "Path", BundlePrefabPath);
     }
 
-    private static void ConfigureContainerGrid(DatabaseService databaseService, ModConfig config)
+    private static void ConfigureContainerGrid(TemplateTable templateTable, ModConfig config)
     {
-        var item = databaseService.GetItems()[new MongoId(DpxCaseTpl)];
+        var item = templateTable.Items[new MongoId(DpxCaseTpl)];
         var props = GetMemberValue(item, "Properties", "Props", "_props")
             ?? throw new InvalidOperationException($"[{ModName}] created item props not found");
 
@@ -244,11 +251,11 @@ internal static class DpxElectronicsCaseInstaller
         SetValue(filter, "ExcludedFilter", new HashSet<MongoId>());
     }
 
-    private static void AddTraderOffer(DatabaseService databaseService, ModConfig config)
+    private static void AddTraderOffer(TradersTable tradersTable, ModConfig config)
     {
         foreach (var traderId in TraderIds.Values.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var trader = databaseService.GetTrader(new MongoId(traderId));
+            var trader = tradersTable.GetTrader(new MongoId(traderId));
             if (trader?.Assort == null)
             {
                 continue;
@@ -260,7 +267,7 @@ internal static class DpxElectronicsCaseInstaller
             trader.Assort.LoyalLevelItems.Remove(oldAssortId);
         }
 
-        var targetTrader = databaseService.GetTrader(new MongoId(config.TraderId));
+        var targetTrader = tradersTable.GetTrader(new MongoId(config.TraderId));
         var assort = targetTrader?.Assort
             ?? throw new InvalidOperationException($"[{ModName}] trader assort not found: {config.TraderId}");
 
@@ -293,9 +300,9 @@ internal static class DpxElectronicsCaseInstaller
         assort.LoyalLevelItems[assortId] = config.LoyaltyLevel;
     }
 
-    private static void VerifyStartup(ISptLogger<Mod> logger, DatabaseService databaseService, ModConfig config)
+    private static void VerifyStartup(ISptLogger<Mod> logger, TemplateTable templateTable, TradersTable tradersTable, ModConfig config)
     {
-        var item = databaseService.GetItems()[new MongoId(DpxCaseTpl)];
+        var item = templateTable.Items[new MongoId(DpxCaseTpl)];
         var props = GetMemberValue(item, "Properties", "Props", "_props")!;
         var grids = ((IEnumerable)GetMemberValue(props, "Grids", "grids")!).Cast<object>().ToList();
         var grid = grids.Single();
@@ -309,7 +316,7 @@ internal static class DpxElectronicsCaseInstaller
         var gridOk = Convert.ToInt32(GetMemberValue(gridProps, "CellsH", "cellsH")) == config.InternalGrid.Width
             && Convert.ToInt32(GetMemberValue(gridProps, "CellsV", "cellsV")) == config.InternalGrid.Height;
         var filterOk = allowed.Count == config.FilterIds.Count && !allowed.Except(config.FilterIds, StringComparer.OrdinalIgnoreCase).Any();
-        var trader = databaseService.GetTrader(new MongoId(config.TraderId));
+        var trader = tradersTable.GetTrader(new MongoId(config.TraderId));
         var assortId = new MongoId(TraderAssortId);
         var traderOk = trader?.Assort?.Items.Any(item => item.Id.Equals(assortId) && item.Template.Equals(new MongoId(DpxCaseTpl))) == true
             && trader.Assort.BarterScheme.ContainsKey(assortId)

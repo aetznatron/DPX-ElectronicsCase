@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.2.0
+
+- Ported to SPT 4.1.x (built and tested against SPT 4.1.6 / EFT 0.16.9.5.40743, .NET 10).
+- `AbstractModMetadata` -> `IModMetadata`, `IsBundleMod` dropped (bundles are declared by `bundles.json`).
+- `IOnLoad.OnLoad` -> `OnLoadAsync(CancellationToken)`; runs at `OnLoadOrder.Preload + 1` because SPT 4.1.3+ refuses to add items once profiles have loaded.
+- `DatabaseService` -> `TemplateTable` / `TradersTable`.
+- `CustomItemService.CreateItemFromClone` takes the calling `Assembly`; `NewItemName` is required.
+- Namespace moves: `Services.Locales.LocaleService`, `Services.Modding.Custom.CustomItemService`, `Common.Models.Logging.ISptLogger<T>`.
+- Mod files live in `SPT_Runtime/user/mods/DPX-ElectronicsCase` on SPT 4.1.x.
+
 ## v1.1.0
 
 - Added config/config.json.

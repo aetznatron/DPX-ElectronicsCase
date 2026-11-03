@@ -1,6 +1,6 @@
 # DPX Electronics Case
 
-Server-side SPT 4.0.13 mod that adds the DPX Electronics Case, a configurable storage case for electronics and advanced technology parts.
+Server-side SPT 4.1.x mod that adds the DPX Electronics Case, a configurable storage case for electronics and advanced technology parts.
 
 ## Features
 

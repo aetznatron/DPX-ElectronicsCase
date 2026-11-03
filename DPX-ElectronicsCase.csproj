@@ -1,9 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>DPX-ElectronicsCase</AssemblyName>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <Version>1.2.0</Version>
+    <!--
+      Folder that contains SPTarkov.Server.Core.dll (SPT 4.1.x: <install>\SPT_Runtime).
+      Override per build: /p:SptRoot="D:\Games\SPT 4.1.6 essential\SPT_Runtime"
+    -->
+    <SptRoot Condition="'$(SptRoot)' == ''">D:\Games\SPT 4.1.6 essential\SPT_Runtime</SptRoot>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,15 +19,19 @@
 
   <ItemGroup>
     <Reference Include="SPTarkov.Server.Core">
-      <HintPath>..\..\..\SPTarkov.Server.Core.dll</HintPath>
+      <HintPath>$(SptRoot)\SPTarkov.Server.Core.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="SPTarkov.DI">
-      <HintPath>..\..\..\SPTarkov.DI.dll</HintPath>
+      <HintPath>$(SptRoot)\SPTarkov.DI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SPTarkov.Common">
+      <HintPath>$(SptRoot)\SPTarkov.Common.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="SemanticVersioning">
-      <HintPath>..\..\..\SemanticVersioning.dll</HintPath>
+      <HintPath>$(SptRoot)\SemanticVersioning.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
