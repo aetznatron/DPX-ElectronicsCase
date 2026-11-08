@@ -1,5 +1,11 @@
 # DPX Electronics Case
 
+> **SPT 4.1.x port** — this fork is maintained by **aetznatron** and ports the DPX Electronics Case to SPT 4.1.x
+> (client 0.16.9.x). Original by **picouik** ([picouik/DPX-ElectronicsCase](https://github.com/picouik/DPX-ElectronicsCase)).
+>
+> Building and installing the ported version: see [BUILDING.md](BUILDING.md) and `build-spt.ps1`.
+> Build notes further down are upstream text and may be outdated.
+
 Server-side SPT 4.1.x mod that adds the DPX Electronics Case, a configurable storage case for electronics and advanced technology parts.
 
 ## Features
